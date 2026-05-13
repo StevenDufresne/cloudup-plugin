@@ -153,9 +153,11 @@ set -euo pipefail
 exec env \
   MPP_WALLET_PRIVATE_KEY="${CLOUDUP_WALLET_KEY}" \
   MPP_MAX_AMOUNT_USD="${CLOUDUP_MAX_USD:-0.10}" \
-  npx -y "github:tellyworth/mpp-remote#<MPP_REMOTE_SHA>" \
+  npx -y "https://github.com/tellyworth/mpp-remote/archive/<MPP_REMOTE_SHA>.tar.gz" \
   "${CLOUDUP_MCP_URL:-https://api.stage-cloudup.com/mcp/public}"
 ```
+
+> **Why tarball URL, not `github:owner/repo#sha`:** npm v10.x ships a regression where `github:` and `git+https://` package specs that include a `#<sha>` ref fail with `GitFetcher requires an Arborist constructor to pack a tarball`. The archive-tarball URL bypasses npm's git fetcher entirely and still pins to the exact commit. Verified on node v22.20.0 / npm 10.9.3.
 
 - [ ] **Step 2: Make it executable**
 
