@@ -1,0 +1,16 @@
+{
+  "name": "cloudup",
+  "description": "Upload images to Cloudup via x402 micropayments. Agents can capture screenshots (e.g. Playwright) and embed shareable URLs in PR comments, issues, and chat.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Steve Dufresne",
+    "email": "steve.dufresne@a8c.com"
+  },
+  "keywords": [
+    "cloudup",
+    "x402",
+    "screenshots",
+    "mcp",
+    "upload"
+  ]
+}
