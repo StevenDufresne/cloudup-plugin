@@ -20,4 +20,7 @@ Upload a local file to Cloudup via x402 micropayment and print the returned URL.
 3. Verify the file exists. If it does not, report the error and stop.
 4. Call the `cloudup` MCP server's `quick_upload` tool with the resolved path.
 5. On success, print the returned URL on its own line so the user can copy it. Include a one-line note that the upload was paid for via x402.
-6. On failure, surface the error verbatim and do not retry silently. If the error is "missing key" or "insufficient balance", point the user at the plugin README.
+6. On failure, surface the error verbatim and do not retry silently. Specifically:
+   - "missing key" or "insufficient balance" → point the user at the plugin README.
+   - "cap exceeded" → report and stop; do not retry. The user can raise `CLOUDUP_MAX_USD`.
+   - Network errors → one retry is acceptable; surface the failure if it persists.

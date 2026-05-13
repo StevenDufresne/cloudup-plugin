@@ -32,7 +32,8 @@ You have access to an MCP server named `cloudup` that uploads local images to Cl
 Each upload is paid for by the user's wallet, configured via `CLOUDUP_WALLET_KEY`. The default cap is $0.10 per call (`CLOUDUP_MAX_USD`).
 
 If the upload fails:
-- **Missing key error** → point the user at the plugin README setup section
+- **`cloudup` MCP server not connected / tool not available at all** → almost always means `CLOUDUP_WALLET_KEY` is unset (the wrapper script refuses to start the server without it). Point the user at the plugin README setup section.
+- **Missing key error returned from the tool** → point the user at the plugin README setup section.
 - **Cap exceeded** → tell the user; do not retry. They can raise `CLOUDUP_MAX_USD` if appropriate.
 - **Insufficient balance** → tell the user to fund their wallet. Do not retry.
 - **Network error** → one retry is fine; surface the error if it persists.

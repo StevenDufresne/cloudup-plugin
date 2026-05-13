@@ -86,7 +86,7 @@ You only need USDC — no ETH for gas. The server submits the meta-transaction o
 - **"CLOUDUP_WALLET_KEY is not set"** — Run `echo $CLOUDUP_WALLET_KEY` in a fresh shell. If empty, your shell rc isn't being loaded by Claude Code. Set it in `~/.claude/settings.json` under `env` instead.
 - **"Spending cap exceeded"** — A single upload would exceed `CLOUDUP_MAX_USD`. Raise it (with care) or pick a smaller file.
 - **"Insufficient balance"** — Fund the wallet address with more USDC on the correct chain.
-- **MCP server not starting** — Run the plugin's wrapper script directly with `CLOUDUP_WALLET_KEY` set (path: `~/.claude/plugins/<marketplace>/cloudup/scripts/cloudup-server.sh`). That surfaces npx or network errors directly.
+- **MCP server not starting** — Run the wrapper script directly with `CLOUDUP_WALLET_KEY` set, from the plugin's installed location under `~/.claude/plugins/.../cloudup/scripts/cloudup-server.sh`. That surfaces npx or network errors directly.
 
 ## Version
 
