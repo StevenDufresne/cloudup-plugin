@@ -1,11 +1,15 @@
 {
   "mcpServers": {
     "cloudup": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/cloudup-server.sh",
+      "command": "npx",
+      "args": [
+        "-y",
+        "https://github.com/tellyworth/mpp-remote/archive/54e42e4a796c42aee81967fce81e1c2f3f58e8c4.tar.gz",
+        "${CLOUDUP_MCP_URL:-https://api.stage-cloudup.com/mcp/public}"
+      ],
       "env": {
-        "CLOUDUP_WALLET_KEY": "${CLOUDUP_WALLET_KEY}",
-        "CLOUDUP_MAX_USD": "${CLOUDUP_MAX_USD:-0.10}",
-        "CLOUDUP_MCP_URL": "${CLOUDUP_MCP_URL:-https://api.stage-cloudup.com/mcp/public}"
+        "MPP_WALLET_PRIVATE_KEY": "${CLOUDUP_WALLET_KEY}",
+        "MPP_MAX_AMOUNT_USD": "${CLOUDUP_MAX_USD:-0.10}"
       }
     }
   }
