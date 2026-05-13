@@ -96,7 +96,7 @@ You only need USDC — no ETH for gas. The server submits the meta-transaction o
 
 ## Version
 
-`0.1.5`
+`0.1.6` — switched the slash command and skill to Cloudup's new `upload_image` tool (image-tailored MIME sniff, ready-to-paste markdown in the response, explicit 90-day `expires_at`). Falls back to `quick_upload` for non-image content. Requires the `upload_image` tool on the Cloudup MCP server (see [cloudup-mono#1477](https://github.com/Automattic/cloudup-mono/pull/1477)).
 
 ## License
 

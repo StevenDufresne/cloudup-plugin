@@ -22,10 +22,10 @@ You have access to an MCP server named `cloudup` that uploads local images to Cl
 ## How to use
 
 1. Identify the absolute path to the local image file (e.g. `/tmp/screenshot.png`).
-2. Call the upload tool from the `cloudup` MCP server. The exact tool name in your runtime is typically `mcp__cloudup__quick_upload` — discover it from the available tools list if naming differs.
-3. The tool returns a JSON response containing the share URL.
-4. Embed the URL in your markdown response as `![brief description](URL)`.
-5. Tell the user the image was uploaded via x402 micropayment. They are paying for it from their configured wallet — this is expected and they should know.
+2. Call the upload tool from the `cloudup` MCP server. The exact tool name in your runtime is typically `mcp__cloudup__upload_image` — discover it from the available tools list if naming differs. For non-image files, fall back to `mcp__cloudup__quick_upload`.
+3. The tool returns a JSON response containing `direct_url` (the hotlink), `markdown` (ready-to-paste GH-flavored markdown), `content_type`, `size_bytes`, `sku`, and `expires_at`.
+4. Paste the `markdown` field verbatim into your response. If you want custom alt text, pass an `alt` argument on the call (it's stripped of `[`/`]` and capped at 200 chars); otherwise the alt is derived from the filename stem.
+5. Tell the user the image was uploaded via x402 micropayment. They are paying for it from their configured wallet — this is expected and they should know. Mention the `expires_at`: the anonymous hotlink SKU (`hotlink-90d`) retains files for 90 days, after which the embed will turn into a broken-image icon in GitHub with no in-band explanation.
 
 ## Costs and failures
 
