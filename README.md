@@ -19,6 +19,8 @@ In a Claude Code session, register this repo as a plugin marketplace and install
 /plugin install cloudup@cloudup-plugin
 ```
 
+> **Heads-up:** complete steps 2–4 below *before* you start your next Claude Code session. The plugin's MCP server refuses to start without `CLOUDUP_WALLET_KEY`, so a session started before the key is set will show `cloudup` as "Failed to connect" in `/mcp`. Set the env var, then open a fresh session.
+
 ### 2. Generate a wallet private key
 
 Any EVM private key works. To generate one quickly:
@@ -86,6 +88,7 @@ You only need USDC — no ETH for gas. The server submits the meta-transaction o
 
 ## Troubleshooting
 
+- **`/mcp` shows `cloudup` as "Failed to connect"** — Almost always means `CLOUDUP_WALLET_KEY` isn't set in the environment Claude Code launched from. The wrapper script refuses to start the MCP server without it (by design). Set the key, then start a fresh Claude Code session — restarts pick up new env vars at session start.
 - **"CLOUDUP_WALLET_KEY is not set"** — Run `echo $CLOUDUP_WALLET_KEY` in a fresh shell. If empty, your shell rc isn't being loaded by Claude Code. Set it in `~/.claude/settings.json` under `env` instead.
 - **"Spending cap exceeded"** — A single upload would exceed `CLOUDUP_MAX_USD`. Raise it (with care) or pick a smaller file.
 - **"Insufficient balance"** — Fund the wallet address with more USDC on the correct chain.
