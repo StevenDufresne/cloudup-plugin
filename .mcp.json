@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "cloudup": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/cloudup-server.sh"
+    }
+  }
+}
