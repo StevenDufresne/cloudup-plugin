@@ -12,14 +12,12 @@ Upload images to Cloudup directly from Claude Code, paying per upload with x402 
 
 ### 1. Install the plugin
 
-In a Claude Code session, register this repo as a plugin marketplace and install the plugin:
+In a Claude Code session:
 
 ```
 /plugin marketplace add StevenDufresne/cloudup-plugin
 /plugin install cloudup@cloudup-plugin
 ```
-
-> **Heads-up:** complete steps 2–4 below *before* you start your next Claude Code session. The plugin's MCP server refuses to start without `CLOUDUP_WALLET_KEY`, so a session started before the key is set will show `cloudup` as "Failed to connect" in `/mcp`. Set the env var, then open a fresh session.
 
 ### 2. Generate a wallet private key
 
@@ -35,7 +33,7 @@ Save the resulting `0x…` string somewhere safe. Keep it secret.
 
 Find the address corresponding to your private key (e.g. via `cast wallet address <KEY>` or any wallet client).
 
-Send USDC to that address on **Base Sepolia** (testnet, chain ID 84532). A small amount of test USDC is plenty — each upload costs ~$0.05.
+Send testnet USDC to that address on **Base Sepolia** (chain ID 84532). A small amount is plenty — each upload costs ~$0.05.
 
 Faucets:
 
@@ -44,24 +42,14 @@ Faucets:
 
 You do **not** need ETH for gas — the Cloudup server submits the meta-transaction on your behalf.
 
-### 4. Configure environment variables
-
-Set `CLOUDUP_WALLET_KEY` so the MCP server can sign payments. The simplest path:
+### 4. Export the key in your shell
 
 ```
 # in ~/.zshrc or ~/.bashrc
 export CLOUDUP_WALLET_KEY=0x...
 ```
 
-Or via Claude Code settings (`~/.claude/settings.json`):
-
-```json
-{
-  "env": {
-    "CLOUDUP_WALLET_KEY": "0x..."
-  }
-}
-```
+Reload your shell so the variable is available before you start Claude Code.
 
 Optional overrides:
 
@@ -70,9 +58,18 @@ Optional overrides:
 | `CLOUDUP_MAX_USD` | `0.10` | Spending cap per upload — refuses to sign above this |
 | `CLOUDUP_MCP_URL` | `https://api.stage-cloudup.com/mcp/public` | Server endpoint (swap for prod when available) |
 
-### 5. Try it
+### 5. Remove any duplicate manual cloudup MCP
 
-In a Claude Code session:
+If you previously registered an `mpp-remote`-backed Cloudup MCP server manually (e.g. via `claude mcp add`), remove it. Claude Code silently suppresses plugin-declared MCP servers whose command + args match an existing manually-configured one, so the plugin's `cloudup` will appear to "do nothing" if a manual duplicate exists.
+
+```
+claude mcp list                                # find any manual cloudup-* entries
+claude mcp remove <your-cloudup-server-name>
+```
+
+### 6. Restart Claude Code and verify
+
+Start a fresh Claude Code session. Run `/mcp` and confirm `cloudup` shows as connected. Then test:
 
 ```
 /cloudup /tmp/screenshot.png
@@ -88,15 +85,18 @@ You only need USDC — no ETH for gas. The server submits the meta-transaction o
 
 ## Troubleshooting
 
-- **`/mcp` shows `cloudup` as "Failed to connect"** — Almost always means `CLOUDUP_WALLET_KEY` isn't set in the environment Claude Code launched from. The wrapper script refuses to start the MCP server without it (by design). Set the key, then start a fresh Claude Code session — restarts pick up new env vars at session start.
-- **"CLOUDUP_WALLET_KEY is not set"** — Run `echo $CLOUDUP_WALLET_KEY` in a fresh shell. If empty, your shell rc isn't being loaded by Claude Code. Set it in `~/.claude/settings.json` under `env` instead.
-- **"Spending cap exceeded"** — A single upload would exceed `CLOUDUP_MAX_USD`. Raise it (with care) or pick a smaller file.
-- **"Insufficient balance"** — Fund the wallet address with more USDC on the correct chain.
-- **MCP server not starting** — Run the wrapper script directly with `CLOUDUP_WALLET_KEY` set, from the plugin's installed location under `~/.claude/plugins/.../cloudup/scripts/cloudup-server.sh`. That surfaces npx or network errors directly.
+- **`/mcp` doesn't list `cloudup` at all** — Most often a duplicate-suppression collision: an existing manually-configured MCP server (in `~/.claude.json` or via `claude mcp add`) has the same `command + args` as the plugin's, and Claude Code drops the plugin's silently. Run `claude mcp list` to find duplicates, then `claude mcp remove <name>`. See step 5.
+- **`/mcp` shows `cloudup` as "Failed to connect"** — Usually means `CLOUDUP_WALLET_KEY` isn't set in the environment Claude Code launched from. Set it in your shell rc, reload, and start a fresh session. Or set it in `~/.claude/settings.json` under `env` if your shell rc isn't being picked up by Claude Code.
+- **"Spending cap exceeded"** — A single upload would exceed `CLOUDUP_MAX_USD`. Raise it (with care) or use a smaller file.
+- **"Insufficient balance"** — Fund the wallet address with more testnet USDC on Base Sepolia.
+
+## Caveats
+
+`v0.1` ships against the Cloudup **staging** endpoint, which is currently IP-restricted to the Automattic network. External developers can install the plugin but will not be able to reach the server until a public/prod endpoint is available. Prod endpoint, a generated-wallet setup flow, and a `/cloudup-balance` command are planned for v0.2.
 
 ## Version
 
-`0.1.0` — staging endpoint only. Prod endpoint, generated-wallet setup, and a balance command are planned for v0.2.
+`0.1.5`
 
 ## License
 
