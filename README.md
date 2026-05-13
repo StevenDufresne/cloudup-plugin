@@ -6,7 +6,7 @@ Upload images to Cloudup directly from Claude Code, paying per upload with x402 
 
 - **MCP server** (`cloudup`) — wraps `tellyworth/mpp-remote` pointed at Cloudup staging
 - **Skill** (`uploading-to-cloudup`) — teaches the agent when to reach for the upload tool
-- **Slash command** (`/cloudup <path>`) — explicit user-driven uploads
+- **Slash commands** — `/cloudup <path>` for uploads, `/cloudup-setup` for one-time key provisioning
 
 ## Setup
 
@@ -19,21 +19,26 @@ In a Claude Code session:
 /plugin install cloudup@cloudup-plugin
 ```
 
-### 2. Generate a wallet private key
+### 2. Provision a wallet key into Keychain
 
-Any EVM private key works. To generate one quickly:
+Run `/cloudup-setup` in Claude Code. It will generate (or import) a wallet private key and store it in your **macOS Keychain** under `service=cloudup, account=wallet`. The key never lives in an environment variable, shell history, or settings file.
+
+Behind the scenes this calls `scripts/cloudup-key.sh`, which you can also invoke directly:
 
 ```
-node -e "console.log(require('viem/accounts').generatePrivateKey())"
+~/.claude/plugins/cache/cloudup-plugin/cloudup/*/scripts/cloudup-key.sh generate
+~/.claude/plugins/cache/cloudup-plugin/cloudup/*/scripts/cloudup-key.sh status
+~/.claude/plugins/cache/cloudup-plugin/cloudup/*/scripts/cloudup-key.sh address
+~/.claude/plugins/cache/cloudup-plugin/cloudup/*/scripts/cloudup-key.sh remove
 ```
 
-Save the resulting `0x…` string somewhere safe. Keep it secret.
+The setup flow prints the wallet address. Note it down for step 3.
+
+> **Back-compat:** if `CLOUDUP_WALLET_KEY` is set in your environment, the wrapper still honors it and skips Keychain. Existing setups continue to work; Keychain is the new recommended path.
 
 ### 3. Fund the wallet with USDC
 
-Find the address corresponding to your private key (e.g. via `cast wallet address <KEY>` or any wallet client).
-
-Send testnet USDC to that address on **Base Sepolia** (chain ID 84532). A small amount is plenty — each upload costs ~$0.05.
+Send testnet USDC to the address from step 2 on **Base Sepolia** (chain ID 84532). A small amount is plenty — each upload costs ~$0.05.
 
 Faucets:
 
@@ -42,21 +47,13 @@ Faucets:
 
 You do **not** need ETH for gas — the Cloudup server submits the meta-transaction on your behalf.
 
-### 4. Export the key in your shell
-
-```
-# in ~/.zshrc or ~/.bashrc
-export CLOUDUP_WALLET_KEY=0x...
-```
-
-Reload your shell so the variable is available before you start Claude Code.
-
-Optional overrides:
+### 4. Optional configuration
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `CLOUDUP_MAX_USD` | `0.10` | Spending cap per upload — refuses to sign above this |
 | `CLOUDUP_MCP_URL` | `https://api.stage-cloudup.com/mcp/public` | Server endpoint (swap for prod when available) |
+| `CLOUDUP_WALLET_KEY` | _(unset)_ | Back-compat: raw private key. If set, overrides Keychain. Not recommended. |
 
 ### 5. Remove any duplicate manual cloudup MCP
 
@@ -86,7 +83,8 @@ You only need USDC — no ETH for gas. The server submits the meta-transaction o
 ## Troubleshooting
 
 - **`/mcp` doesn't list `cloudup` at all** — Most often a duplicate-suppression collision: an existing manually-configured MCP server (in `~/.claude.json` or via `claude mcp add`) has the same `command + args` as the plugin's, and Claude Code drops the plugin's silently. Run `claude mcp list` to find duplicates, then `claude mcp remove <name>`. See step 5.
-- **`/mcp` shows `cloudup` as "Failed to connect"** — Usually means `CLOUDUP_WALLET_KEY` isn't set in the environment Claude Code launched from. Set it in your shell rc, reload, and start a fresh session. Or set it in `~/.claude/settings.json` under `env` if your shell rc isn't being picked up by Claude Code.
+- **`/mcp` shows `cloudup` as "Failed to connect"** — Usually means no key has been provisioned yet. Run `/cloudup-setup` (or `scripts/cloudup-key.sh generate` directly) and start a fresh session. You can verify with `scripts/cloudup-key.sh status`.
+- **Keychain prompt every session** — macOS sometimes asks to "allow `bash` to access `cloudup`". Click "Always Allow" once; the prompt won't return.
 - **"Spending cap exceeded"** — A single upload would exceed `CLOUDUP_MAX_USD`. Raise it (with care) or use a smaller file.
 - **"Insufficient balance"** — Fund the wallet address with more testnet USDC on Base Sepolia.
 
