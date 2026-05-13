@@ -6,6 +6,7 @@ set -euo pipefail
 
 : "${CLOUDUP_WALLET_KEY:?CLOUDUP_WALLET_KEY is not set. See the plugin README for setup.}"
 
+# To bump mpp-remote, update the SHA in the tarball URL below.
 exec env \
   MPP_WALLET_PRIVATE_KEY="${CLOUDUP_WALLET_KEY}" \
   MPP_MAX_AMOUNT_USD="${CLOUDUP_MAX_USD:-0.10}" \
