@@ -5,12 +5,8 @@
       "args": [
         "-y",
         "github:tellyworth/mpp-remote",
-        "${CLOUDUP_MCP_URL:-https://api.stage-cloudup.com/mcp/public}"
-      ],
-      "env": {
-        "MPP_WALLET_PRIVATE_KEY": "${CLOUDUP_WALLET_KEY}",
-        "MPP_MAX_AMOUNT_USD": "${CLOUDUP_MAX_USD:-0.10}"
-      }
+        "https://api.stage-cloudup.com/mcp/public"
+      ]
     }
   }
 }
