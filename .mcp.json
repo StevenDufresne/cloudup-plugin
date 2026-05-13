@@ -4,7 +4,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "https://github.com/tellyworth/mpp-remote/archive/54e42e4a796c42aee81967fce81e1c2f3f58e8c4.tar.gz",
+        "github:tellyworth/mpp-remote",
         "${CLOUDUP_MCP_URL:-https://api.stage-cloudup.com/mcp/public}"
       ],
       "env": {
