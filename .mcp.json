@@ -9,7 +9,9 @@
       "env": {
         "CLOUDUP_MCP_URL": "${CLOUDUP_MCP_URL:-https://api.stage-cloudup.com/mcp/public}",
         "CLOUDUP_MAX_USD": "${CLOUDUP_MAX_USD:-0.10}",
-        "CLOUDUP_WALLET_KEY": "${CLOUDUP_WALLET_KEY:-}"
+        "CLOUDUP_WALLET_KEY": "${CLOUDUP_WALLET_KEY:-}",
+        "HTTPS_PROXY": "${HTTPS_PROXY:-}",
+        "ALL_PROXY": "${ALL_PROXY:-}"
       }
     }
   }

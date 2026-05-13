@@ -85,12 +85,26 @@ You only need USDC — no ETH for gas. The server submits the meta-transaction o
 - **`/mcp` doesn't list `cloudup` at all** — Most often a duplicate-suppression collision: an existing manually-configured MCP server (in `~/.claude.json` or via `claude mcp add`) has the same `command + args` as the plugin's, and Claude Code drops the plugin's silently. Run `claude mcp list` to find duplicates, then `claude mcp remove <name>`. See step 5.
 - **`/mcp` shows `cloudup` as "Failed to connect"** — Usually means no key has been provisioned yet. Run `/cloudup-setup` (or `scripts/cloudup-key.sh generate` directly) and start a fresh session. You can verify with `scripts/cloudup-key.sh status`.
 - **Keychain prompt every session** — macOS sometimes asks to "allow `bash` to access `cloudup`". Click "Always Allow" once; the prompt won't return.
+- **"connection timed out after 30000ms"** — The MCP server is reachable but the upstream Cloudup endpoint isn't. Most often this is the IP-allowlist: `api.stage-cloudup.com` only accepts traffic from the Automattic network, and you're off-VPN/off-SOCKS. Set `HTTPS_PROXY` to your A8c SOCKS5 forwarder (typically `socks5h://127.0.0.1:8080`) before launching Claude Code, or get on the VPN. See the SOCKS5 section below.
 - **"Spending cap exceeded"** — A single upload would exceed `CLOUDUP_MAX_USD`. Raise it (with care) or use a smaller file.
 - **"Insufficient balance"** — Fund the wallet address with more testnet USDC on Base Sepolia.
 
+## Reaching the staging endpoint (A8c-only for now)
+
+`v0.1` ships against the Cloudup **staging** endpoint, which is IP-restricted to the Automattic network. You'll need one of:
+
+- **A8c VPN** active (default route through `utun*`).
+- **SOCKS5 forwarder** to an A8c bastion. If you run `ssh -D 8080 <a8c-host>`, set:
+  ```
+  export HTTPS_PROXY="socks5h://127.0.0.1:8080"
+  ```
+  in `~/.zshenv` (read by zsh non-interactively, so Claude Code's MCP launch will see it) or in your shell rc + restart Claude Code. mpp-remote auto-detects `HTTPS_PROXY` / `ALL_PROXY` and routes upstream calls through the proxy. The plugin's `.mcp.json` forwards both env vars from your shell into the MCP launch env.
+
+Use `socks5h://` (not `socks5://`) so DNS resolution happens server-side — internal cloudup hostnames may not be resolvable from your machine.
+
 ## Caveats
 
-`v0.1` ships against the Cloudup **staging** endpoint, which is currently IP-restricted to the Automattic network. External developers can install the plugin but will not be able to reach the server until a public/prod endpoint is available. Prod endpoint, a generated-wallet setup flow, and a `/cloudup-balance` command are planned for v0.2.
+External developers can install the plugin but will not be able to reach the server until a public/prod endpoint is available. Prod endpoint, a generated-wallet setup flow, and a `/cloudup-balance` command are planned for v0.2.
 
 ## Version
 
