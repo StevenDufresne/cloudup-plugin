@@ -21,9 +21,35 @@ require_macos() {
     fi
 }
 
+VIEM_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/cloudup"
+
+# Install viem once into a stable cache dir so `node -e` can require() it.
+# `npx -p viem -- node -e ...` does not work because npx only puts the
+# package's bins on PATH, not in node's resolution path.
+ensure_viem() {
+    if [ -d "$VIEM_CACHE/node_modules/viem" ]; then
+        return 0
+    fi
+    mkdir -p "$VIEM_CACHE"
+    (cd "$VIEM_CACHE" \
+        && printf '{"name":"cloudup-key-helper","private":true,"dependencies":{"viem":"latest"}}\n' > package.json \
+        && npm install --silent --no-audit --no-fund >&2)
+}
+
 derive_address() {
     local key="$1"
-    npx -y -p viem@latest -e "console.log(require('viem/accounts').privateKeyToAccount('$key').address)" 2>/dev/null
+    ensure_viem >&2 || return 1
+    (cd "$VIEM_CACHE" && node -e "console.log(require('viem/accounts').privateKeyToAccount('$key').address)")
+}
+
+generate_key() {
+    # 32 random bytes is a valid secp256k1 private key with overwhelming
+    # probability (chance of being >= curve order is < 2^-128).
+    if command -v openssl >/dev/null 2>&1; then
+        printf '0x%s\n' "$(openssl rand -hex 32)"
+    else
+        node -e "console.log('0x' + require('crypto').randomBytes(32).toString('hex'))"
+    fi
 }
 
 store() {
@@ -55,14 +81,19 @@ case "$cmd" in
 
     generate)
         require_macos
-        key="$(npx -y -p viem@latest -e "console.log(require('viem/accounts').generatePrivateKey())")"
+        key="$(generate_key)"
         store "$key"
-        addr="$(derive_address "$key")"
         echo "Generated new wallet and stored in macOS Keychain ($SERVICE/$ACCOUNT)."
-        echo "Wallet address: $addr"
-        echo "Fund this address with Base Sepolia USDC:"
-        echo "  https://faucet.circle.com/"
-        echo "  https://portal.cdp.coinbase.com/products/faucet"
+        addr="$(derive_address "$key" || true)"
+        if [ -n "$addr" ]; then
+            echo "Wallet address: $addr"
+            echo "Fund this address with Base Sepolia USDC:"
+            echo "  https://faucet.circle.com/"
+            echo "  https://portal.cdp.coinbase.com/products/faucet"
+        else
+            echo "Key stored, but address derivation failed."
+            echo "Run \`cloudup-key.sh address\` to retry derivation."
+        fi
         ;;
 
     show)
