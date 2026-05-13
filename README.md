@@ -12,8 +12,11 @@ Upload images to Cloudup directly from Claude Code, paying per upload with x402 
 
 ### 1. Install the plugin
 
+In a Claude Code session, register this repo as a plugin marketplace and install the plugin:
+
 ```
-claude plugin install <git-url-or-path-to-this-repo>
+/plugin marketplace add StevenDufresne/cloudup-plugin
+/plugin install cloudup@cloudup-plugin
 ```
 
 ### 2. Generate a wallet private key
