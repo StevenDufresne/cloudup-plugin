@@ -88,18 +88,9 @@ fi
 export MPP_WALLET_PRIVATE_KEY="$KEY"
 export MPP_MAX_AMOUNT_USD="${CLOUDUP_MAX_USD:-0.10}"
 
-# Cloudup staging is IP-restricted to the A8c network. By default we route
-# upstream traffic through the conventional A8c SOCKS5 forwarder on
-# localhost:8080 (typically `ssh -D 8080 <bastion>`). Users can override:
-#   CLOUDUP_PROXY=socks5h://127.0.0.1:9999  → custom port
-#   CLOUDUP_PROXY=                          → disable, connect directly
-PROXY="${CLOUDUP_PROXY-socks5h://127.0.0.1:8080}"
-
-if [ -n "$PROXY" ]; then
-    exec npx -y github:tellyworth/mpp-remote \
-        --proxy "$PROXY" \
-        "${CLOUDUP_MCP_URL:-https://api.stage-cloudup.com/mcp/public}"
-else
-    exec npx -y github:tellyworth/mpp-remote \
-        "${CLOUDUP_MCP_URL:-https://api.stage-cloudup.com/mcp/public}"
-fi
+# Cloudup staging is IP-restricted to the A8c network, so we route upstream
+# traffic through the conventional A8c SOCKS5 forwarder on localhost:8080
+# (typically `ssh -D 8080 <bastion>`).
+exec npx -y github:tellyworth/mpp-remote \
+    --proxy socks5h://127.0.0.1:8080 \
+    "${CLOUDUP_MCP_URL:-https://api.stage-cloudup.com/mcp/public}"
