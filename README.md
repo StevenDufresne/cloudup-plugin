@@ -101,7 +101,7 @@ External developers can install the plugin but will not be able to reach the ser
 
 ## Version
 
-`0.1.9` — raised the default `CLOUDUP_MAX_USD` from `0.10` to `0.20` so the large-file `begin_upload` SKU (~$0.20) works out of the box without manual env-var override.
+`0.1.10` — added Path 0: upload images already in the conversation (pasted screenshots, MCP `image` blocks, `data:` URLs) without round-tripping through disk. Requires the server-side input modes from [Automattic/cloudup-mono#1482](https://github.com/Automattic/cloudup-mono/pull/1482). Also syncs `marketplace.json` to match `plugin.json` (was lagging at 0.1.8).
 
 ## License
 
