@@ -1,11 +1,11 @@
 ---
 name: uploading-to-cloudup
-description: Use when you have a screenshot or generated image on local disk that you need to share via URL — in a PR comment, GitHub issue reply, or chat response. Typically triggered after Playwright UI verification.
+description: Use when you have a screenshot or generated image you need to share via URL — in a PR comment, GitHub issue reply, or chat response. Works whether the image is on local disk, pasted into the conversation, or returned from another tool as an MCP image block. Typically triggered after Playwright UI verification or when the user pastes a screenshot.
 ---
 
 # Uploading images to Cloudup
 
-You have access to a Cloudup MCP server that uploads local images and returns a public share URL. Use this when you have an image on disk and need to reference it in markdown that consumers will render — pull request comments, issue replies, chat responses.
+You have access to a Cloudup MCP server that uploads images and returns a public share URL. Use this when you have an image — on disk, pasted into the conversation, or returned from another tool — and need to reference it in markdown that consumers will render: pull request comments, issue replies, chat responses.
 
 The server is registered under the plugin-namespaced name `plugin:cloudup:cloudup` (Claude Code prefixes plugin-installed MCP servers with `plugin:<plugin-name>:`). When tooling asks for a `server` argument (e.g. `ListMcpResourcesTool`), pass that full name, not the bare `cloudup`.
 
@@ -23,11 +23,34 @@ The server is registered under the plugin-namespaced name `plugin:cloudup:cloudu
 
 ## How to use
 
-The server exposes two upload paths. **Pick by file size, not by reflex.**
+The server exposes three upload paths. **Pick by where the image already lives**, then (for on-disk images) by size:
+
+| Where's the image? | Path |
+|---|---|
+| Already in the conversation (pasted screenshot, MCP `image` block from another tool, or a `data:` URL) | Path 0 |
+| On disk, small (under ~60 KB binary / ~80 KB base64) | Path A |
+| On disk, larger | Path B |
+
+**Never** re-encode an in-conversation image to disk just to fit Path A — that doubles your context cost. Use Path 0.
+
+### Path 0 — image already in conversation (`upload_image` with `image` or `image_data_url`)
+
+Use when an image already exists in your context: the user pasted a screenshot into chat, a Playwright/screenshot tool returned an MCP `image` content block, or you have a `data:image/...;base64,...` URL. Avoids round-tripping the bytes through disk.
+
+1. Locate the image content in conversation. It will be either:
+   - An MCP `image` content block — shape `{type: "image", data: "<base64>", mimeType: "image/png"}` (`annotations` may also be present and is fine to pass through).
+   - A `data:image/...;base64,...` URL string.
+2. Call `mcp__plugin_cloudup_cloudup__upload_image` with **one of**:
+   - `image: <the content block, verbatim>` — when you have an MCP image block.
+   - `image_data_url: "<the data URL string>"` — when you have a data URL.
+3. Pass `alt` if you want explicit alt text; otherwise the server derives it from the filename (defaults to `screenshot-YYYYMMDDHHMMSS.<ext>` here).
+4. The response shape is the same as Path A: `direct_url`, `markdown`, `content_type`, `size_bytes`, `sku`, `expires_at`.
+
+Do not pass `content_base64` alongside `image` or `image_data_url` — exactly one input mode is allowed per call. The server sniffs the actual MIME from the decoded bytes regardless of what `mimeType` or the data URL claims, so non-image content gets rejected with `invalid_request`.
 
 ### Path A — `upload_image` / `quick_upload` (inline base64)
 
-Use when the file is small enough that you can read it without hitting your tooling's read limits. As a rule of thumb in Claude Code: under ~60 KB binary (~80 KB base64) is safely Read-able. Above that, switch to Path B.
+Use when the file is on disk and small enough that you can read it without hitting your tooling's read limits. As a rule of thumb in Claude Code: under ~60 KB binary (~80 KB base64) is safely Read-able. Above that, switch to Path B.
 
 1. Identify the absolute path to the local image file (e.g. `/tmp/screenshot.png`).
 2. Call the upload tool from the `plugin:cloudup:cloudup` MCP server. The runtime exposes tools using the namespace-normalized form: typically `mcp__plugin_cloudup_cloudup__upload_image` (colons replaced with underscores). If that exact name isn't surfaced, discover the right one from the available tools list — look for an `upload_image` or `quick_upload` tool under the cloudup-prefixed server. For non-image files, use `quick_upload` on the same server.
