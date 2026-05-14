@@ -51,7 +51,7 @@ You do **not** need ETH for gas — the Cloudup server submits the meta-transact
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `CLOUDUP_MAX_USD` | `0.10` | Spending cap per upload — refuses to sign above this |
+| `CLOUDUP_MAX_USD` | `0.20` | Spending cap per upload — refuses to sign above this. Default covers the large-file `begin_upload` SKU (~$0.20); raise if you'll upload bigger payloads. |
 | `CLOUDUP_MCP_URL` | `https://api.stage-cloudup.com/mcp/public` | Server endpoint (swap for prod when available) |
 | `CLOUDUP_WALLET_KEY` | _(unset)_ | Back-compat: raw private key. If set, overrides Keychain. Not recommended. |
 
@@ -101,7 +101,7 @@ External developers can install the plugin but will not be able to reach the ser
 
 ## Version
 
-`0.1.6` — switched the slash command and skill to Cloudup's new `upload_image` tool (image-tailored MIME sniff, ready-to-paste markdown in the response, explicit 90-day `expires_at`). Falls back to `quick_upload` for non-image content. Requires the `upload_image` tool on the Cloudup MCP server (see [cloudup-mono#1477](https://github.com/Automattic/cloudup-mono/pull/1477)).
+`0.1.9` — raised the default `CLOUDUP_MAX_USD` from `0.10` to `0.20` so the large-file `begin_upload` SKU (~$0.20) works out of the box without manual env-var override.
 
 ## License
 

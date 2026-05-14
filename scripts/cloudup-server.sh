@@ -86,7 +86,7 @@ fi
 # ---- exec mpp-remote -----------------------------------------------------
 
 export MPP_WALLET_PRIVATE_KEY="$KEY"
-export MPP_MAX_AMOUNT_USD="${CLOUDUP_MAX_USD:-0.10}"
+export MPP_MAX_AMOUNT_USD="${CLOUDUP_MAX_USD:-0.20}"
 
 # Cloudup staging is IP-restricted to the A8c network, so we route upstream
 # traffic through the conventional A8c SOCKS5 forwarder on localhost:8080
