@@ -1,21 +1,40 @@
 ---
 name: cloudup-setup
-description: One-time setup for the Cloudup plugin — provisions a wallet key into macOS Keychain.
+description: One-time setup for the Cloudup plugin — installs @privy-io/agent-wallet-cli and logs the user in to Privy.
 ---
 
 # /cloudup-setup
 
-One-time setup. Stores a wallet private key in the macOS Keychain so the plugin never reads it from an environment variable or settings file.
+One-time setup. Provisions a Privy agent wallet via `@privy-io/agent-wallet-cli` (`paw`). The signing key stays in Privy's wallet service; the local machine only holds a per-user authorization keypair in the OS keychain.
 
 ## Instructions
 
-1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/cloudup-key.sh status` via Bash. If a key is already stored, ask the user whether to keep it or replace it. If they want to keep it, stop here.
-2. Otherwise, ask the user whether to (a) generate a new wallet, or (b) import an existing 0x-prefixed key. Default: (a).
-3. **If (a) — generate:** run `${CLAUDE_PLUGIN_ROOT}/scripts/cloudup-key.sh generate` via Bash. Print the wallet address and faucet URLs from the output.
-4. **If (b) — import:** tell the user to paste the key themselves using the `! <command>` prefix so the key doesn't land in conversation history. The command they should type is:
+1. Check whether `paw` is installed by running `command -v paw` via Bash. If it prints a path, skip to step 3.
+2. If `paw` is missing, try to install it yourself via Bash:
    ```
-   ! ${CLAUDE_PLUGIN_ROOT}/scripts/cloudup-key.sh set 0x...
+   npm i -g @privy-io/agent-wallet-cli
    ```
-   Wait for them to run it before continuing.
-5. Confirm by running `${CLAUDE_PLUGIN_ROOT}/scripts/cloudup-key.sh address`. Print the address and remind the user to fund it with Base Sepolia USDC.
-6. Tell the user to restart Claude Code — the MCP server picks up the new Keychain entry at session start.
+   - On success, continue to step 3.
+   - On failure: if the error contains `EACCES`, `permission denied`, or `EPERM`, npm's global prefix needs elevation. Do **not** retry with `sudo`. Tell the user to run the install themselves in the prompt — they know their npm setup:
+     ```
+     ! sudo npm i -g @privy-io/agent-wallet-cli
+     ```
+     or, if they prefer a user-prefixed npm (`~/.npm-global` or nvm), the same command without `sudo`. Wait for them to confirm before continuing.
+   - For other failures (network, registry, etc.), surface the error verbatim and stop.
+3. Run `paw list-wallets` via Bash.
+   - If it prints an `Ethereum: 0x…` line, a session already exists. Print the address and tell the user setup is done — they only need to restart Claude Code if this is the first time the plugin's been wired up. Stop here.
+   - If it prints `Not logged in. Run \`privy login\` first.`, proceed to step 4.
+4. Tell the user to run `paw login` themselves (not via you) so the browser-based auth flow stays interactive:
+   ```
+   ! paw login
+   ```
+   The CLI will open a browser, the user signs in, pastes the credentials blob back, and the CLI stores the session in the OS keychain. Wait for them to confirm.
+5. Re-run `paw list-wallets` to confirm. Print the Ethereum address and tell the user:
+   - Fund this address with **Base Sepolia USDC** for the current (staging) endpoint. They can use `paw fund` to open the on-ramp, or any Base Sepolia faucet.
+   - Restart Claude Code so the MCP server picks up the new wallet at session start.
+
+## Headless / CI note
+
+This command assumes there is a human + browser in the loop. On a TeamCity build agent (or any unattended environment), `paw login` cannot complete — it's browser-based, and the session it stores is encrypted with a host-bound key, so you can't `paw login` on your laptop and copy the session to a CI machine.
+
+For those contexts, skip this command entirely and use **Path B** from the plugin README: set `CLOUDUP_WALLET_KEY` to a fresh `0x…` private key (typically a CI secret), and the wrapper will sign locally with viem instead of shelling out to `paw`. If a user is invoking `/cloudup-setup` from a CI context, point them at that path and stop.

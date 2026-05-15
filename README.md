@@ -19,33 +19,40 @@ In a Claude Code session:
 /plugin install cloudup@cloudup-plugin
 ```
 
-### 2. Provision a wallet key into Keychain
+### 2. Provision a wallet
 
-Run `/cloudup-setup` in Claude Code. It will generate (or import) a wallet private key and store it in your **macOS Keychain** under `service=cloudup, account=wallet`. The key never lives in an environment variable, shell history, or settings file.
+Pick one of two paths depending on whether there's a human at the keyboard.
 
-Behind the scenes this calls `scripts/cloudup-key.sh`, which you can also invoke directly:
+#### Path A — Privy agent wallet (dev machines, recommended)
+
+The plugin signs x402 payments by asking Privy's agent-wallet service to sign. The signing key lives in Privy; your machine only holds a per-user authorization keypair in the OS keychain (managed by the Privy CLI itself).
+
+Install the CLI once:
 
 ```
-~/.claude/plugins/cache/cloudup-plugin/cloudup/*/scripts/cloudup-key.sh generate
-~/.claude/plugins/cache/cloudup-plugin/cloudup/*/scripts/cloudup-key.sh status
-~/.claude/plugins/cache/cloudup-plugin/cloudup/*/scripts/cloudup-key.sh address
-~/.claude/plugins/cache/cloudup-plugin/cloudup/*/scripts/cloudup-key.sh remove
+npm i -g @privy-io/agent-wallet-cli
 ```
 
-The setup flow prints the wallet address. Note it down for step 3.
+Then run `/cloudup-setup` in Claude Code — it walks you through `paw login` (browser-based) and prints the Ethereum address of your new wallet.
 
-> **Back-compat:** if `CLOUDUP_WALLET_KEY` is set in your environment, the wrapper still honors it and skips Keychain. Existing setups continue to work; Keychain is the new recommended path.
+#### Path B — Local private key (CI, headless, TeamCity)
+
+Path A doesn't work unattended: `paw login` opens a browser, and the session it stores is encrypted with a host-bound key, so you can't `paw login` on your laptop and ship the session to a build agent. For headless contexts, set:
+
+```
+export CLOUDUP_WALLET_KEY=0x...   # a fresh secp256k1 key you generated
+```
+
+The wrapper skips `paw` entirely and signs locally with viem. Keep the funded balance thin (each upload ≤ `CLOUDUP_MAX_USD`); a leaked key drains exactly what you funded.
 
 ### 3. Fund the wallet with USDC
 
-Send testnet USDC to the address from step 2 on **Base Sepolia** (chain ID 84532). A small amount is plenty — each upload costs ~$0.05.
+Send testnet USDC to your wallet address on **Base Sepolia** (chain ID 84532). A small amount is plenty — each upload costs ~$0.05. The Cloudup server submits the meta-transaction on your behalf, so you don't need ETH for gas.
 
-Faucets:
+For Path A, `paw fund` opens Privy's funding flow in a browser. Or use a Base Sepolia faucet (same source for either path):
 
 - [Circle USDC faucet](https://faucet.circle.com/) — primary (USDC-only is sufficient)
 - [Coinbase CDP faucet](https://portal.cdp.coinbase.com/products/faucet) — fallback (ETH + USDC)
-
-You do **not** need ETH for gas — the Cloudup server submits the meta-transaction on your behalf.
 
 ### 4. Optional configuration
 
@@ -53,7 +60,7 @@ You do **not** need ETH for gas — the Cloudup server submits the meta-transact
 |---|---|---|
 | `CLOUDUP_MAX_USD` | `0.20` | Spending cap per upload — refuses to sign above this. Default covers the large-file `begin_upload` SKU (~$0.20); raise if you'll upload bigger payloads. |
 | `CLOUDUP_MCP_URL` | `https://api.stage-cloudup.com/mcp/public` | Server endpoint (swap for prod when available) |
-| `CLOUDUP_WALLET_KEY` | _(unset)_ | Back-compat: raw private key. If set, overrides Keychain. Not recommended. |
+| `CLOUDUP_WALLET_KEY` | _(unset)_ | Path B selector. If set to a `0x…` private key, skip `paw` and sign locally. Use for CI / headless agents only. |
 
 ### 5. Remove any duplicate manual cloudup MCP
 
@@ -76,18 +83,17 @@ Or let the agent reach for it naturally: ask it to take a Playwright screenshot 
 
 ## How it works
 
-When the agent calls the upload tool, the MCP server requests an upload from Cloudup. Cloudup responds with an [x402](https://x402.org) payment challenge. The server signs an [EIP-3009](https://eips.ethereum.org/EIPS/eip-3009) `transferWithAuthorization` with your key and retries with an `X-PAYMENT` header. Cloudup settles the payment on-chain and returns the share URL. Total time: a few seconds.
+When the agent calls the upload tool, the MCP server requests an upload from Cloudup. Cloudup responds with an [x402](https://x402.org) payment challenge. mpp-remote builds an [EIP-3009](https://eips.ethereum.org/EIPS/eip-3009) `transferWithAuthorization`; the signature comes from `paw` (Path A — Privy holds the key) or from a local viem signer (Path B — `CLOUDUP_WALLET_KEY` holds the key). mpp-remote retries the original request with an `X-PAYMENT` header carrying that signature; Cloudup settles the payment on-chain and returns the share URL. Total time: a few seconds.
 
 You only need USDC — no ETH for gas. The server submits the meta-transaction on your behalf.
 
 ## Troubleshooting
 
 - **`/mcp` doesn't list `cloudup` at all** — Most often a duplicate-suppression collision: an existing manually-configured MCP server (in `~/.claude.json` or via `claude mcp add`) has the same `command + args` as the plugin's, and Claude Code drops the plugin's silently. Run `claude mcp list` to find duplicates, then `claude mcp remove <name>`. See step 5.
-- **`/mcp` shows `cloudup` as "Failed to connect"** — Usually means no key has been provisioned yet. Run `/cloudup-setup` (or `scripts/cloudup-key.sh generate` directly) and start a fresh session. You can verify with `scripts/cloudup-key.sh status`.
-- **Keychain prompt every session** — macOS sometimes asks to "allow `bash` to access `cloudup`". Click "Always Allow" once; the prompt won't return.
+- **`/mcp` shows `cloudup` as "Failed to connect"** — On Path A: `paw` isn't installed (`npm i -g @privy-io/agent-wallet-cli`), or the user isn't logged in (`paw login`), or `npx`/`paw` aren't on PATH for non-interactive shells (add their dir to `~/.zshenv`). On Path B: `CLOUDUP_WALLET_KEY` malformed. Verify with `paw list-wallets` from a plain terminal; the wrapper exits with a specific error message in each case.
 - **"connection timed out after 30000ms"** — The MCP server is reachable but the upstream Cloudup endpoint isn't. Your A8c SSH tunnel (`ssh -D 8080 …`) isn't up on `localhost:8080`. Bring it back up — see the staging-endpoint section below.
 - **"Spending cap exceeded"** — A single upload would exceed `CLOUDUP_MAX_USD`. Raise it (with care) or use a smaller file.
-- **"Insufficient balance"** — Fund the wallet address with more testnet USDC on Base Sepolia.
+- **"Insufficient balance"** — Fund the wallet address with more testnet USDC on Base Sepolia (`paw fund` or a faucet).
 
 ## Reaching the staging endpoint (A8c-only for now)
 
@@ -97,11 +103,11 @@ You only need USDC — no ETH for gas. The server submits the meta-transaction o
 
 ## Caveats
 
-External developers can install the plugin but will not be able to reach the server until a public/prod endpoint is available. Prod endpoint, a generated-wallet setup flow, and a `/cloudup-balance` command are planned for v0.2.
+External developers can install the plugin but will not be able to reach the server until a public/prod endpoint is available. Prod endpoint and a `/cloudup-balance` command are planned for v0.3.
 
 ## Version
 
-`0.1.10` — added Path 0: upload images already in the conversation (pasted screenshots, MCP `image` blocks, `data:` URLs) without round-tripping through disk. Requires the server-side input modes from [Automattic/cloudup-mono#1482](https://github.com/Automattic/cloudup-mono/pull/1482). Also syncs `marketplace.json` to match `plugin.json` (was lagging at 0.1.8).
+`0.2.0` — **breaking change.** Two signer paths now: **Path A** (default, dev machines) signs via `@privy-io/agent-wallet-cli` (`paw`), with the key held in Privy and a per-user authorization keypair in the OS keychain. **Path B** (CI / headless) takes a raw `0x…` private key in `CLOUDUP_WALLET_KEY` and signs locally with viem — Path A's browser-based `paw login` can't run unattended, and its session is host-bound. Existing setups must migrate: either install paw (`npm i -g @privy-io/agent-wallet-cli && paw login`) or move their old Keychain key into the `CLOUDUP_WALLET_KEY` env var. The old `scripts/cloudup-key.sh` (Keychain key-management helper) is gone.
 
 ## License
 

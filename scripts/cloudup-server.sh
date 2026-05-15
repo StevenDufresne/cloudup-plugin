@@ -1,59 +1,62 @@
 #!/usr/bin/env bash
-# Cloudup MCP wrapper — resolves the wallet key from macOS Keychain (with an
-# env-var fallback for back-compat), then execs mpp-remote with the key
-# exported as MPP_WALLET_PRIVATE_KEY.
+# Cloudup MCP wrapper — picks a signer for mpp-remote and execs the bridge.
 #
-# Key resolution order:
-#   1. $CLOUDUP_WALLET_KEY (env var) — back-compat with older setups
-#   2. macOS Keychain item: service=cloudup, account=wallet
+# Two modes, picked by which env var is set:
 #
-# npx resolution: Claude Code's MCP launch environment does NOT inherit
-# nvm/Homebrew PATH adjustments (this is why an earlier wrapper attempt was
-# dropped in 0.1.3 — see commit 3f86299). We re-introduce the wrapper here
-# because Keychain access can't live in .mcp.json substitution, so we have
-# to make npx-finding robust ourselves.
+#   1. Default (dev machines): resolve the user's Privy agent-wallet address
+#      via the `paw` CLI (@privy-io/agent-wallet-cli) and pass it to
+#      mpp-remote as PRIVY_WALLET_ADDRESS. The signing key never leaves Privy.
+#      One-time prereq, run by `/cloudup-setup`:
+#          npm i -g @privy-io/agent-wallet-cli
+#          paw login
+#
+#   2. CI / headless: if CLOUDUP_WALLET_KEY is set (typically a TeamCity
+#      secret), skip paw discovery and pass it through as
+#      MPP_WALLET_PRIVATE_KEY. mpp-remote signs locally with viem. Suitable
+#      for unattended use where `paw login` (browser-based, host-bound
+#      session) can't run.
+#
+# Claude Code's MCP launch environment does NOT inherit nvm/Homebrew PATH
+# adjustments, so we have to find `npx` (and `paw`, in mode 1) ourselves.
 
 set -euo pipefail
 
-# ---- npx discovery -------------------------------------------------------
+# ---- bin discovery -------------------------------------------------------
 
-find_npx() {
-    command -v npx >/dev/null 2>&1 && return 0
+find_bin() {
+    local name="$1" p
 
-    # Sourcing user shell init files non-interactively to pick up nvm/PATH.
+    p="$(command -v "$name" 2>/dev/null || true)"
+    if [ -n "$p" ]; then echo "$p"; return 0; fi
+
     if [ -s "$HOME/.zshenv" ]; then
         # shellcheck disable=SC1091
         . "$HOME/.zshenv" 2>/dev/null || true
-        command -v npx >/dev/null 2>&1 && return 0
     fi
-
     local nvm_dir="${NVM_DIR:-$HOME/.nvm}"
     if [ -s "$nvm_dir/nvm.sh" ]; then
         export NVM_DIR="$nvm_dir"
         # shellcheck disable=SC1091
         . "$NVM_DIR/nvm.sh" 2>/dev/null || true
-        command -v npx >/dev/null 2>&1 && return 0
     fi
 
-    # Probe common install locations. Globs that don't match are left literal
-    # by `set -f` defaults; we handle that with the -x test.
+    p="$(command -v "$name" 2>/dev/null || true)"
+    if [ -n "$p" ]; then echo "$p"; return 0; fi
+
     local cand
     for cand in \
-        /opt/homebrew/bin/npx \
-        /usr/local/bin/npx \
-        "$HOME"/.nvm/versions/node/*/bin/npx \
-        "$HOME"/.volta/bin/npx \
-        /usr/bin/npx; do
-        if [ -x "$cand" ]; then
-            export PATH="$(dirname "$cand"):$PATH"
-            return 0
-        fi
+        /opt/homebrew/bin/"$name" \
+        /usr/local/bin/"$name" \
+        "$HOME"/.nvm/versions/node/*/bin/"$name" \
+        "$HOME"/.volta/bin/"$name" \
+        /usr/bin/"$name"; do
+        if [ -x "$cand" ]; then echo "$cand"; return 0; fi
     done
 
     return 1
 }
 
-if ! find_npx; then
+NPX="$(find_bin npx)" || {
     cat >&2 <<'EOF'
 cloudup: cannot find `npx` on PATH.
 
@@ -63,34 +66,65 @@ Homebrew PATH additions are not inherited. Install Node.js system-wide
 `npx` to a non-interactive shell init file like ~/.zshenv.
 EOF
     exit 1
-fi
+}
 
-# ---- wallet key resolution ----------------------------------------------
+export PATH="$(dirname "$NPX"):$PATH"
 
-KEY="${CLOUDUP_WALLET_KEY:-}"
+# ---- signer selection ----------------------------------------------------
 
-if [ -z "$KEY" ] && command -v security >/dev/null 2>&1; then
-    KEY="$(security find-generic-password -s cloudup -a wallet -w 2>/dev/null || true)"
-fi
+if [ -n "${CLOUDUP_WALLET_KEY:-}" ]; then
+    # Mode 2: local-key signer (CI / headless).
+    export MPP_WALLET_PRIVATE_KEY="$CLOUDUP_WALLET_KEY"
+else
+    # Mode 1: Privy agent-wallet CLI (dev machines).
+    PAW="$(find_bin paw)" || {
+        cat >&2 <<'EOF'
+cloudup: cannot find `paw` (@privy-io/agent-wallet-cli).
 
-if [ -z "$KEY" ]; then
-    cat >&2 <<'EOF'
-cloudup: no wallet key configured.
+Either install paw and log in:
 
-Run /cloudup-setup in Claude Code to provision a key into macOS Keychain,
-or set CLOUDUP_WALLET_KEY in your environment.
+    npm i -g @privy-io/agent-wallet-cli
+    paw login
+
+…or set CLOUDUP_WALLET_KEY to a 0x-prefixed private key for headless /
+CI use. See the plugin README for the trade-offs.
 EOF
-    exit 1
+        exit 1
+    }
+    export PATH="$(dirname "$PAW"):$PATH"
+
+    if ! WALLETS_OUT="$("$PAW" list-wallets 2>&1)"; then
+        cat >&2 <<EOF
+cloudup: \`paw list-wallets\` failed. Run \`paw login\` first.
+
+$WALLETS_OUT
+EOF
+        exit 1
+    fi
+
+    # `paw list-wallets` prints a human-readable block; pull the Ethereum line.
+    ADDR="$(printf '%s\n' "$WALLETS_OUT" | sed -nE 's/.*Ethereum:[[:space:]]+(0x[0-9a-fA-F]+).*/\1/p' | head -n1)"
+
+    if [ -z "$ADDR" ]; then
+        cat >&2 <<EOF
+cloudup: could not parse an Ethereum address from \`paw list-wallets\`:
+
+$WALLETS_OUT
+EOF
+        exit 1
+    fi
+
+    export PRIVY_WALLET_ADDRESS="$ADDR"
+    export PRIVY_AGENT_WALLET_BIN="$PAW"
 fi
 
 # ---- exec mpp-remote -----------------------------------------------------
 
-export MPP_WALLET_PRIVATE_KEY="$KEY"
 export MPP_MAX_AMOUNT_USD="${CLOUDUP_MAX_USD:-0.20}"
 
 # Cloudup staging is IP-restricted to the A8c network, so we route upstream
 # traffic through the conventional A8c SOCKS5 forwarder on localhost:8080
 # (typically `ssh -D 8080 <bastion>`).
-exec npx -y github:tellyworth/mpp-remote \
+exec "$NPX" -y github:tellyworth/mpp-remote \
     --proxy socks5h://127.0.0.1:8080 \
     "${CLOUDUP_MCP_URL:-https://api.stage-cloudup.com/mcp/public}"
