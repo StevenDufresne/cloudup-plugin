@@ -35,4 +35,6 @@ One-time setup. Provisions a Privy agent wallet via `@privy-io/agent-wallet-cli`
 
 ## Headless / CI note
 
-This command assumes there is a human + browser in the loop. On a TeamCity build agent (or any unattended environment), `paw login` cannot complete — it's browser-based, and the session it stores is encrypted with a host-bound key, so you can't `paw login` on your laptop and copy the session to a CI machine. If a user is invoking this from a CI context, surface that limitation and stop.
+This command assumes there is a human + browser in the loop. On a TeamCity build agent (or any unattended environment), `paw login` cannot complete — it's browser-based, and the session it stores is encrypted with a host-bound key, so you can't `paw login` on your laptop and copy the session to a CI machine.
+
+For those contexts, skip this command entirely and use **Path B** from the plugin README: set `CLOUDUP_WALLET_KEY` to a fresh `0x…` private key (typically a CI secret), and the wrapper will sign locally with viem instead of shelling out to `paw`. If a user is invoking `/cloudup-setup` from a CI context, point them at that path and stop.

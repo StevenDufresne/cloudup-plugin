@@ -1,14 +1,23 @@
 #!/usr/bin/env bash
-# Cloudup MCP wrapper — resolves the user's Privy agent-wallet address via the
-# `paw` CLI (@privy-io/agent-wallet-cli), exports it for mpp-remote, and execs
-# the bridge. No private key ever passes through this script.
+# Cloudup MCP wrapper — picks a signer for mpp-remote and execs the bridge.
 #
-# Prereqs (one-time, run by `/cloudup-setup`):
-#   npm i -g @privy-io/agent-wallet-cli
-#   paw login
+# Two modes, picked by which env var is set:
+#
+#   1. Default (dev machines): resolve the user's Privy agent-wallet address
+#      via the `paw` CLI (@privy-io/agent-wallet-cli) and pass it to
+#      mpp-remote as PRIVY_WALLET_ADDRESS. The signing key never leaves Privy.
+#      One-time prereq, run by `/cloudup-setup`:
+#          npm i -g @privy-io/agent-wallet-cli
+#          paw login
+#
+#   2. CI / headless: if CLOUDUP_WALLET_KEY is set (typically a TeamCity
+#      secret), skip paw discovery and pass it through as
+#      MPP_WALLET_PRIVATE_KEY. mpp-remote signs locally with viem. Suitable
+#      for unattended use where `paw login` (browser-based, host-bound
+#      session) can't run.
 #
 # Claude Code's MCP launch environment does NOT inherit nvm/Homebrew PATH
-# adjustments, so we have to find `npx` and `paw` ourselves.
+# adjustments, so we have to find `npx` (and `paw`, in mode 1) ourselves.
 
 set -euo pipefail
 
@@ -59,50 +68,58 @@ EOF
     exit 1
 }
 
-PAW="$(find_bin paw)" || {
-    cat >&2 <<'EOF'
+export PATH="$(dirname "$NPX"):$PATH"
+
+# ---- signer selection ----------------------------------------------------
+
+if [ -n "${CLOUDUP_WALLET_KEY:-}" ]; then
+    # Mode 2: local-key signer (CI / headless).
+    export MPP_WALLET_PRIVATE_KEY="$CLOUDUP_WALLET_KEY"
+else
+    # Mode 1: Privy agent-wallet CLI (dev machines).
+    PAW="$(find_bin paw)" || {
+        cat >&2 <<'EOF'
 cloudup: cannot find `paw` (@privy-io/agent-wallet-cli).
 
-Install it once and log in:
+Either install paw and log in:
 
     npm i -g @privy-io/agent-wallet-cli
     paw login
 
-Then restart Claude Code.
+…or set CLOUDUP_WALLET_KEY to a 0x-prefixed private key for headless /
+CI use. See the plugin README for the trade-offs.
 EOF
-    exit 1
-}
+        exit 1
+    }
+    export PATH="$(dirname "$PAW"):$PATH"
 
-# Make sure both dirs are on PATH for any child invocations.
-export PATH="$(dirname "$NPX"):$(dirname "$PAW"):$PATH"
-
-# ---- wallet address ------------------------------------------------------
-
-if ! WALLETS_OUT="$("$PAW" list-wallets 2>&1)"; then
-    cat >&2 <<EOF
+    if ! WALLETS_OUT="$("$PAW" list-wallets 2>&1)"; then
+        cat >&2 <<EOF
 cloudup: \`paw list-wallets\` failed. Run \`paw login\` first.
 
 $WALLETS_OUT
 EOF
-    exit 1
-fi
+        exit 1
+    fi
 
-# `paw list-wallets` prints a human-readable block; pull the Ethereum line.
-ADDR="$(printf '%s\n' "$WALLETS_OUT" | sed -nE 's/.*Ethereum:[[:space:]]+(0x[0-9a-fA-F]+).*/\1/p' | head -n1)"
+    # `paw list-wallets` prints a human-readable block; pull the Ethereum line.
+    ADDR="$(printf '%s\n' "$WALLETS_OUT" | sed -nE 's/.*Ethereum:[[:space:]]+(0x[0-9a-fA-F]+).*/\1/p' | head -n1)"
 
-if [ -z "$ADDR" ]; then
-    cat >&2 <<EOF
+    if [ -z "$ADDR" ]; then
+        cat >&2 <<EOF
 cloudup: could not parse an Ethereum address from \`paw list-wallets\`:
 
 $WALLETS_OUT
 EOF
-    exit 1
+        exit 1
+    fi
+
+    export PRIVY_WALLET_ADDRESS="$ADDR"
+    export PRIVY_AGENT_WALLET_BIN="$PAW"
 fi
 
 # ---- exec mpp-remote -----------------------------------------------------
 
-export PRIVY_WALLET_ADDRESS="$ADDR"
-export PRIVY_AGENT_WALLET_BIN="$PAW"
 export MPP_MAX_AMOUNT_USD="${CLOUDUP_MAX_USD:-0.20}"
 
 # Cloudup staging is IP-restricted to the A8c network, so we route upstream
