@@ -10,11 +10,17 @@ One-time setup. Provisions a Privy agent wallet via `@privy-io/agent-wallet-cli`
 ## Instructions
 
 1. Check whether `paw` is installed by running `command -v paw` via Bash. If it prints a path, skip to step 3.
-2. If `paw` is missing, ask the user to install it themselves so the install isn't tied to this conversation. Tell them to run, in the prompt:
+2. If `paw` is missing, try to install it yourself via Bash:
    ```
-   ! npm i -g @privy-io/agent-wallet-cli
+   npm i -g @privy-io/agent-wallet-cli
    ```
-   Wait for them to confirm.
+   - On success, continue to step 3.
+   - On failure: if the error contains `EACCES`, `permission denied`, or `EPERM`, npm's global prefix needs elevation. Do **not** retry with `sudo`. Tell the user to run the install themselves in the prompt — they know their npm setup:
+     ```
+     ! sudo npm i -g @privy-io/agent-wallet-cli
+     ```
+     or, if they prefer a user-prefixed npm (`~/.npm-global` or nvm), the same command without `sudo`. Wait for them to confirm before continuing.
+   - For other failures (network, registry, etc.), surface the error verbatim and stop.
 3. Run `paw list-wallets` via Bash.
    - If it prints an `Ethereum: 0x…` line, a session already exists. Print the address and tell the user setup is done — they only need to restart Claude Code if this is the first time the plugin's been wired up. Stop here.
    - If it prints `Not logged in. Run \`privy login\` first.`, proceed to step 4.
@@ -26,3 +32,7 @@ One-time setup. Provisions a Privy agent wallet via `@privy-io/agent-wallet-cli`
 5. Re-run `paw list-wallets` to confirm. Print the Ethereum address and tell the user:
    - Fund this address with **Base Sepolia USDC** for the current (staging) endpoint. They can use `paw fund` to open the on-ramp, or any Base Sepolia faucet.
    - Restart Claude Code so the MCP server picks up the new wallet at session start.
+
+## Headless / CI note
+
+This command assumes there is a human + browser in the loop. On a TeamCity build agent (or any unattended environment), `paw login` cannot complete — it's browser-based, and the session it stores is encrypted with a host-bound key, so you can't `paw login` on your laptop and copy the session to a CI machine. If a user is invoking this from a CI context, surface that limitation and stop.
