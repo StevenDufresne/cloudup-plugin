@@ -19,43 +19,43 @@ In a Claude Code session:
 /plugin install cloudup@cloudup-plugin
 ```
 
-### 2. Provision a wallet key into Keychain
+### 2. Install the Privy agent-wallet CLI
 
-Run `/cloudup-setup` in Claude Code. It will generate (or import) a wallet private key and store it in your **macOS Keychain** under `service=cloudup, account=wallet`. The key never lives in an environment variable, shell history, or settings file.
-
-Behind the scenes this calls `scripts/cloudup-key.sh`, which you can also invoke directly:
+The plugin signs x402 payments through Privy's agent-wallet service — the signing key lives in Privy, not on your machine. Install Privy's CLI once:
 
 ```
-~/.claude/plugins/cache/cloudup-plugin/cloudup/*/scripts/cloudup-key.sh generate
-~/.claude/plugins/cache/cloudup-plugin/cloudup/*/scripts/cloudup-key.sh status
-~/.claude/plugins/cache/cloudup-plugin/cloudup/*/scripts/cloudup-key.sh address
-~/.claude/plugins/cache/cloudup-plugin/cloudup/*/scripts/cloudup-key.sh remove
+npm i -g @privy-io/agent-wallet-cli
 ```
 
-The setup flow prints the wallet address. Note it down for step 3.
+This installs two binaries (`paw` and `privy-agent-wallet`); the plugin uses `paw`.
 
-> **Back-compat:** if `CLOUDUP_WALLET_KEY` is set in your environment, the wrapper still honors it and skips Keychain. Existing setups continue to work; Keychain is the new recommended path.
+### 3. Run `/cloudup-setup`
 
-### 3. Fund the wallet with USDC
+In Claude Code: `/cloudup-setup`. It walks you through `paw login` — the CLI opens a browser, you sign in to Privy, paste the credentials blob back, and the CLI stores a per-user authorization keypair in your OS keychain. The actual signing key never leaves Privy.
 
-Send testnet USDC to the address from step 2 on **Base Sepolia** (chain ID 84532). A small amount is plenty — each upload costs ~$0.05.
+The setup prints the Ethereum address of your new wallet. Note it down for step 4.
 
-Faucets:
+### 4. Fund the wallet with USDC
+
+Send testnet USDC to that address on **Base Sepolia** (chain ID 84532). A small amount is plenty — each upload costs ~$0.05. The Cloudup server submits the meta-transaction on your behalf, so you don't need ETH for gas.
+
+```
+paw fund
+```
+
+opens Privy's funding flow in a browser. Alternatively, use any Base Sepolia faucet:
 
 - [Circle USDC faucet](https://faucet.circle.com/) — primary (USDC-only is sufficient)
 - [Coinbase CDP faucet](https://portal.cdp.coinbase.com/products/faucet) — fallback (ETH + USDC)
 
-You do **not** need ETH for gas — the Cloudup server submits the meta-transaction on your behalf.
-
-### 4. Optional configuration
+### 5. Optional configuration
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `CLOUDUP_MAX_USD` | `0.20` | Spending cap per upload — refuses to sign above this. Default covers the large-file `begin_upload` SKU (~$0.20); raise if you'll upload bigger payloads. |
 | `CLOUDUP_MCP_URL` | `https://api.stage-cloudup.com/mcp/public` | Server endpoint (swap for prod when available) |
-| `CLOUDUP_WALLET_KEY` | _(unset)_ | Back-compat: raw private key. If set, overrides Keychain. Not recommended. |
 
-### 5. Remove any duplicate manual cloudup MCP
+### 6. Remove any duplicate manual cloudup MCP
 
 If you previously registered an `mpp-remote`-backed Cloudup MCP server manually (e.g. via `claude mcp add`), remove it. Claude Code silently suppresses plugin-declared MCP servers whose command + args match an existing manually-configured one, so the plugin's `cloudup` will appear to "do nothing" if a manual duplicate exists.
 
@@ -64,7 +64,7 @@ claude mcp list                                # find any manual cloudup-* entri
 claude mcp remove <your-cloudup-server-name>
 ```
 
-### 6. Restart Claude Code and verify
+### 7. Restart Claude Code and verify
 
 Start a fresh Claude Code session. Run `/mcp` and confirm `cloudup` shows as connected. Then test:
 
@@ -76,18 +76,17 @@ Or let the agent reach for it naturally: ask it to take a Playwright screenshot 
 
 ## How it works
 
-When the agent calls the upload tool, the MCP server requests an upload from Cloudup. Cloudup responds with an [x402](https://x402.org) payment challenge. The server signs an [EIP-3009](https://eips.ethereum.org/EIPS/eip-3009) `transferWithAuthorization` with your key and retries with an `X-PAYMENT` header. Cloudup settles the payment on-chain and returns the share URL. Total time: a few seconds.
+When the agent calls the upload tool, the MCP server requests an upload from Cloudup. Cloudup responds with an [x402](https://x402.org) payment challenge. mpp-remote builds an [EIP-3009](https://eips.ethereum.org/EIPS/eip-3009) `transferWithAuthorization` and asks `paw` (the Privy agent-wallet CLI) to sign it — Privy holds the signing key and returns just the signature. mpp-remote retries the original request with an `X-PAYMENT` header carrying that signature; Cloudup settles the payment on-chain and returns the share URL. Total time: a few seconds.
 
 You only need USDC — no ETH for gas. The server submits the meta-transaction on your behalf.
 
 ## Troubleshooting
 
-- **`/mcp` doesn't list `cloudup` at all** — Most often a duplicate-suppression collision: an existing manually-configured MCP server (in `~/.claude.json` or via `claude mcp add`) has the same `command + args` as the plugin's, and Claude Code drops the plugin's silently. Run `claude mcp list` to find duplicates, then `claude mcp remove <name>`. See step 5.
-- **`/mcp` shows `cloudup` as "Failed to connect"** — Usually means no key has been provisioned yet. Run `/cloudup-setup` (or `scripts/cloudup-key.sh generate` directly) and start a fresh session. You can verify with `scripts/cloudup-key.sh status`.
-- **Keychain prompt every session** — macOS sometimes asks to "allow `bash` to access `cloudup`". Click "Always Allow" once; the prompt won't return.
+- **`/mcp` doesn't list `cloudup` at all** — Most often a duplicate-suppression collision: an existing manually-configured MCP server (in `~/.claude.json` or via `claude mcp add`) has the same `command + args` as the plugin's, and Claude Code drops the plugin's silently. Run `claude mcp list` to find duplicates, then `claude mcp remove <name>`. See step 6.
+- **`/mcp` shows `cloudup` as "Failed to connect"** — Usually one of: `paw` isn't installed (`npm i -g @privy-io/agent-wallet-cli`), or the user isn't logged in (`paw login`), or `npx`/`paw` aren't on PATH for non-interactive shells (add their dir to `~/.zshenv`). Verify with `paw list-wallets` from a plain terminal; the wrapper exits with a specific error message in each case.
 - **"connection timed out after 30000ms"** — The MCP server is reachable but the upstream Cloudup endpoint isn't. Your A8c SSH tunnel (`ssh -D 8080 …`) isn't up on `localhost:8080`. Bring it back up — see the staging-endpoint section below.
 - **"Spending cap exceeded"** — A single upload would exceed `CLOUDUP_MAX_USD`. Raise it (with care) or use a smaller file.
-- **"Insufficient balance"** — Fund the wallet address with more testnet USDC on Base Sepolia.
+- **"Insufficient balance"** — Fund the wallet address with more testnet USDC on Base Sepolia (`paw fund` or a faucet).
 
 ## Reaching the staging endpoint (A8c-only for now)
 
@@ -97,11 +96,11 @@ You only need USDC — no ETH for gas. The server submits the meta-transaction o
 
 ## Caveats
 
-External developers can install the plugin but will not be able to reach the server until a public/prod endpoint is available. Prod endpoint, a generated-wallet setup flow, and a `/cloudup-balance` command are planned for v0.2.
+External developers can install the plugin but will not be able to reach the server until a public/prod endpoint is available. Prod endpoint and a `/cloudup-balance` command are planned for v0.3.
 
 ## Version
 
-`0.1.10` — added Path 0: upload images already in the conversation (pasted screenshots, MCP `image` blocks, `data:` URLs) without round-tripping through disk. Requires the server-side input modes from [Automattic/cloudup-mono#1482](https://github.com/Automattic/cloudup-mono/pull/1482). Also syncs `marketplace.json` to match `plugin.json` (was lagging at 0.1.8).
+`0.2.0` — **breaking change.** Wallet signing moves from local-key (Keychain-stored `0x…` private key) to Privy's agent-wallet CLI (`@privy-io/agent-wallet-cli`). The signing key now lives in Privy's wallet service; the local machine only holds a per-user authorization keypair in the OS keychain. Existing users must reinstall: `npm i -g @privy-io/agent-wallet-cli && paw login`. The legacy `scripts/cloudup-key.sh` and the `CLOUDUP_WALLET_KEY` env override are gone.
 
 ## License
 
