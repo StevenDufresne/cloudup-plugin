@@ -1,23 +1,30 @@
 #!/usr/bin/env bash
 # Cloudup MCP wrapper — picks a signer for mpp-remote and execs the bridge.
 #
-# Two modes, picked by which env var is set:
+# Three signer modes, tried in this order:
 #
-#   1. Default (dev machines): resolve the user's Privy agent-wallet address
-#      via the `paw` CLI (@privy-io/agent-wallet-cli) and pass it to
-#      mpp-remote as PRIVY_WALLET_ADDRESS. The signing key never leaves Privy.
-#      One-time prereq, run by `/cloudup-setup`:
-#          npm i -g @privy-io/agent-wallet-cli
-#          paw login
+#   1. CLOUDUP_WALLET_KEY env var (CI / headless): if set (typically a
+#      TeamCity secret), pass it through as MPP_WALLET_PRIVATE_KEY.
+#      mpp-remote signs locally with viem. Suitable for unattended use
+#      where neither `paw login` (browser-based) nor Keychain are
+#      available.
 #
-#   2. CI / headless: if CLOUDUP_WALLET_KEY is set (typically a TeamCity
-#      secret), skip paw discovery and pass it through as
-#      MPP_WALLET_PRIVATE_KEY. mpp-remote signs locally with viem. Suitable
-#      for unattended use where `paw login` (browser-based, host-bound
-#      session) can't run.
+#   2. macOS Keychain (locally-generated key): if a key exists under
+#      service=cloudup, account=wallet, read it and pass through as
+#      MPP_WALLET_PRIVATE_KEY. Provisioned by `cloudup-key generate` in
+#      `/cloudup-setup`.
+#
+#   3. Privy agent-wallet CLI (Privy managed wallet): resolve the user's
+#      wallet address via `paw list-wallets` and pass it to mpp-remote as
+#      PRIVY_WALLET_ADDRESS. The signing key never leaves Privy. One-time
+#      prereq: `npm i -g @privy-io/agent-wallet-cli && paw login`.
+#
+# Switching between modes 2 and 3 requires removing the previous one's
+# state (`cloudup-key remove` or by clearing the paw session) — the
+# wrapper just picks the highest-precedence signer that's configured.
 #
 # Claude Code's MCP launch environment does NOT inherit nvm/Homebrew PATH
-# adjustments, so we have to find `npx` (and `paw`, in mode 1) ourselves.
+# adjustments, so we have to find `npx` (and `paw`, in mode 3) ourselves.
 
 set -euo pipefail
 
@@ -72,22 +79,30 @@ export PATH="$(dirname "$NPX"):$PATH"
 
 # ---- signer selection ----------------------------------------------------
 
+KEYCHAIN_KEY=""
+if command -v security >/dev/null 2>&1; then
+    KEYCHAIN_KEY="$(security find-generic-password -s cloudup -a wallet -w 2>/dev/null || true)"
+fi
+
 if [ -n "${CLOUDUP_WALLET_KEY:-}" ]; then
-    # Mode 2: local-key signer (CI / headless).
+    # Mode 1: env-var key (CI / headless).
     export MPP_WALLET_PRIVATE_KEY="$CLOUDUP_WALLET_KEY"
+elif [ -n "$KEYCHAIN_KEY" ]; then
+    # Mode 2: Keychain-stored key (locally-generated).
+    export MPP_WALLET_PRIVATE_KEY="$KEYCHAIN_KEY"
 else
-    # Mode 1: Privy agent-wallet CLI (dev machines).
+    # Mode 3: Privy agent-wallet CLI.
     PAW="$(find_bin paw)" || {
         cat >&2 <<'EOF'
-cloudup: cannot find `paw` (@privy-io/agent-wallet-cli).
+cloudup: no signer configured.
 
-Either install paw and log in:
+Run /cloudup-setup in Claude Code, or pick one of these paths manually:
 
-    npm i -g @privy-io/agent-wallet-cli
-    paw login
+  1. Privy: `npm i -g @privy-io/agent-wallet-cli && paw login`
+  2. Locally-generated key: run `scripts/cloudup-key.sh generate`
+  3. CI / headless: set CLOUDUP_WALLET_KEY to a 0x-prefixed private key
 
-…or set CLOUDUP_WALLET_KEY to a 0x-prefixed private key for headless /
-CI use. See the plugin README for the trade-offs.
+See the plugin README for the trade-offs.
 EOF
         exit 1
     }
