@@ -62,7 +62,7 @@ The wrapper skips Privy and Keychain entirely and signs locally with viem. Keep 
 
 ### 3. Fund the wallet with USDC
 
-Send testnet USDC to your wallet address on **Base Sepolia** (chain ID 84532). A small amount is plenty — each upload costs ~$0.05. The Cloudup server submits the meta-transaction on your behalf, so you don't need ETH for gas.
+Send testnet USDC to your wallet address on **Base Sepolia** (chain ID 84532). A small amount is plenty — uploads cost $0.01–$0.25 depending on which tool the agent uses (image embeds are $0.05, small file uploads $0.01, and large multipart uploads up to $0.25). The Cloudup server submits the meta-transaction on your behalf, so you don't need ETH for gas.
 
 For Path A, `paw fund` opens Privy's funding flow in a browser. For Paths B and C, use a Base Sepolia faucet:
 
@@ -73,7 +73,7 @@ For Path A, `paw fund` opens Privy's funding flow in a browser. For Paths B and 
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `CLOUDUP_MAX_USD` | `0.20` | Spending cap per upload — refuses to sign above this. Default covers the large-file `begin_upload` SKU (~$0.20); raise if you'll upload bigger payloads. |
+| `CLOUDUP_MAX_USD` | `0.30` | Spending cap per upload — refuses to sign above this. Default covers the `large` SKU (`begin_upload`, $0.25) with a small margin; raise if pricing changes upstream. |
 | `CLOUDUP_MCP_URL` | `https://api.stage-cloudup.com/mcp/public` | Server endpoint (swap for prod when available) |
 | `CLOUDUP_WALLET_KEY` | _(unset)_ | Path C selector. If set to a `0x…` private key, skip both `paw` and Keychain and sign locally with viem. Use for CI / headless agents only. |
 
